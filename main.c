@@ -1,15 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <uv.h>
 #include <sys/time.h>
 
-const suseconds_t TICK_RATE = 16666666;
+const suseconds_t TICK_RATE = 33333;
 const int PORT =  8080;
+const float STEP_SIZE = 0.01;
 
 uv_loop_t *loop;
 uv_udp_t send_socket;
 uv_udp_t recv_socket;
-
+struct Snake* snakes;
 
 void on_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
     if (nread < 0) {
@@ -63,11 +65,26 @@ struct Snake {
     struct segment *head;
     struct Snake *next;
 };
-void spawn_snake(struct Snake *snake) {
-    struct segment *segment = malloc(sizeof(struct segment));
-    segment->pos = (coords){10.0f, 20.0f};
+coords get_random_start() {
+    return (coords){(float)rand() / RAND_MAX, (float)rand() / RAND_MAX};
+}
+void spawn_snake(char name[16]) {
+    struct segment *segment = malloc(sizeof *segment);
+    segment->pos = get_random_start();
     segment->next = NULL;
-    *snake = (struct Snake){"pablito", 10, {0.5f, 0.5f}, segment, NULL};
+    struct Snake *snake = malloc(sizeof(struct Snake));
+    snake->length = 10;
+    snake->dir = (coords){0.5f, 0.5f};
+    snake->head = segment;
+    snake->next = NULL;
+
+    strncpy(snake->name, name, sizeof(snake->name) - 1);
+    snake->name[sizeof(snake->name) - 1] = '\0';
+    snakes->next = snake;
+}
+
+void slither(struct Snake *snake) {
+
 }
 void kill_snake(struct Snake *snake) {
     struct segment* tmp;
@@ -83,25 +100,25 @@ void kill_snake(struct Snake *snake) {
         free(tmpSnake);
     }
 }
-suseconds_t get_us_diff(struct timeval* t1, struct timeval* t2) {
-
+suseconds_t get_microsecond_diff(const struct timeval* t1, const struct timeval* t2) {
+    return (t2->tv_sec - t1->tv_sec) * 1000000 + (t2->tv_usec - t1->tv_usec);
 }
 
 int main() {
     create_uv_loop(PORT);
-    struct Snake* snake = malloc(sizeof(struct Snake));
-    spawn_snake(snake);
+    spawn_snake("Pablito");
+    spawn_snake("Ornellita");
+
     struct timeval t1, t2;
     while (1) {
         gettimeofday(&t1, NULL);
         t2 = t1;
-        struct Snake* tmpSnake = snake;
+        struct Snake* tmpSnake = snakes;
         while (tmpSnake) {
-            printf("Snake: %s\n", snake->name);
+            printf("Snake: %s\n", snakes->name);
             tmpSnake = tmpSnake->next;
         }
-        while (get_us_diff(&t1, &t2) <= TICK_RATE) {
-            printf("%ld\n", (long)(t2.tv_usec - t1.tv_usec));
+        while (get_microsecond_diff(&t1, &t2) <= TICK_RATE) {
             uv_run(loop, UV_RUN_NOWAIT);
             gettimeofday(&t2, NULL);
         }
