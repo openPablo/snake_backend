@@ -1,11 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
+#include <sys/time.h>
 
-#include <time.h>
-
-#define TICK_RATE_NS 16666666
-#define PORT 8080
+const suseconds_t TICK_RATE = 16666666;
+const int PORT =  8080;
 
 uv_loop_t *loop;
 uv_udp_t send_socket;
@@ -50,27 +49,63 @@ void create_uv_loop(int port) {
 
 }
 typedef struct {
-    int x;
-    int y;
+    float x;
+    float y;
 } coords;
+struct segment {
+    coords pos;
+    struct segment *next;
+};
 struct Snake {
     char name[16];
     int length;
     coords dir;
+    struct segment *head;
     struct Snake *next;
 };
+void spawn_snake(struct Snake *snake) {
+    struct segment *segment = malloc(sizeof(struct segment));
+    segment->pos = (coords){10.0f, 20.0f};
+    segment->next = NULL;
+    *snake = (struct Snake){"pablito", 10, {0.5f, 0.5f}, segment, NULL};
+}
+void kill_snake(struct Snake *snake) {
+    struct segment* tmp;
+    while (snake->head) {
+        tmp = snake->head;
+        snake->head = snake->head->next;
+        free(tmp);
+    }
+    struct Snake* tmpSnake;
+    while (snake) {
+        tmpSnake = snake;
+        snake = snake->next;
+        free(tmpSnake);
+    }
+}
+suseconds_t get_us_diff(struct timeval* t1, struct timeval* t2) {
+
+}
 
 int main() {
     create_uv_loop(PORT);
-    struct Snake snake =
+    struct Snake* snake = malloc(sizeof(struct Snake));
+    spawn_snake(snake);
+    struct timeval t1, t2;
     while (1) {
-        uv_run(loop, UV_RUN_NOWAIT);
-        while (snake) {
-
-            snake = snake->next;
+        gettimeofday(&t1, NULL);
+        t2 = t1;
+        struct Snake* tmpSnake = snake;
+        while (tmpSnake) {
+            printf("Snake: %s\n", snake->name);
+            tmpSnake = tmpSnake->next;
+        }
+        while (get_us_diff(&t1, &t2) <= TICK_RATE) {
+            printf("%ld\n", (long)(t2.tv_usec - t1.tv_usec));
+            uv_run(loop, UV_RUN_NOWAIT);
+            gettimeofday(&t2, NULL);
         }
     }
-
 
     uv_loop_close(loop);
     return 0;
