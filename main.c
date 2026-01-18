@@ -11,6 +11,7 @@ const int PORT =  8080;
 uv_loop_t *loop;
 uv_udp_t send_socket;
 uv_udp_t recv_socket;
+struct Snake* snakes = NULL;
 
 
 void on_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
@@ -54,7 +55,7 @@ void create_uv_loop(int port) {
 coords get_random_start() {
     return (coords){(float)rand() / RAND_MAX, (float)rand() / RAND_MAX};
 }
-int spawn_snake(struct Snake **snakes, char name[16]) {
+int spawn_snake(struct Snake **snakes, char name[16]) { // NOT thread safe when inserting a new snake, inserts at start of list
     struct Snake *tmpSnake = *snakes;
     while (tmpSnake != NULL) {
         if (strcmp(tmpSnake->name, name) == 0) {
@@ -62,34 +63,25 @@ int spawn_snake(struct Snake **snakes, char name[16]) {
         }
         tmpSnake = tmpSnake->next;
     }
-    struct segment *first = malloc(sizeof (struct segment));
-    struct segment *second = malloc(sizeof (struct segment));
+    struct segment *head = malloc(sizeof (struct segment));
+    struct segment *tail = malloc(sizeof (struct segment));
     struct Snake *snake = malloc(sizeof(struct Snake));
 
-    first->pos = get_random_start();
-    first->next = second;
-    second->pos.x = first->pos.x * snake->speed;
-    second->pos.y = first->pos.y * snake->speed;
+    head->pos = get_random_start();
+    head->next = tail;
+    tail->pos.x = head->pos.x - snake->dir.x * snake->speed;
+    tail->pos.y = head->pos.y - snake->dir.y * snake->speed;
 
     snake->length = 10;
     snake->dir = (coords){0.5f, 0.5f};
-    snake->head = first;
-    snake->next = NULL;
+    snake->head = head;
+    snake->next = *snakes;
     snake->speed = 0.1f;
 
     strncpy(snake->name, name, sizeof(snake->name) - 1);
     snake->name[sizeof(snake->name) - 1] = '\0';
 
-    if (!*snakes) {
-        *snakes = snake;
-    }
-    else {
-        tmpSnake = *snakes;
-        while (tmpSnake->next) {
-            tmpSnake = tmpSnake->next;
-        }
-        tmpSnake->next = snake;
-    }
+    *snakes = snake;
     return 0;
 }
 
@@ -134,6 +126,7 @@ void slither(struct Snake *snake) {
         struct segment *tmp = snake->head;
         while (tmp) {
             if (tmp->next->next == NULL) {
+                free(tmp->next);
                 tmp->next = NULL;
             }
             tmp = tmp->next;
@@ -145,31 +138,30 @@ suseconds_t get_microsecond_diff(const struct timeval* t1, const struct timeval*
     return (t2->tv_sec - t1->tv_sec) * 1000000 + (t2->tv_usec - t1->tv_usec);
 }
 
+void game_loop() {
+    struct Snake* tmpSnake;
+    tmpSnake = snakes;
+    while (tmpSnake) {
+        printf("Snake: %s\n", tmpSnake->name);
+        slither(tmpSnake);
+        tmpSnake = tmpSnake->next;
+    }
+}
 int main() {
-    struct Snake* snakes = NULL;
-    spawn_snake(&snakes, "Pablito");
-    spawn_snake(&snakes, "Ornellita");
-    kill_snake(&snakes, "Pablito");
-    spawn_snake(&snakes, "Pablito");
+    char buffer[20];
+    for (int i = 0; i < 2000; i++) {
+        snprintf(buffer, 16, "snake%d", i);
+        spawn_snake(&snakes, buffer);
+    }
 
 
     create_uv_loop(PORT);
-    struct timeval t1, t2;
-    struct Snake* tmpSnake;
-    while (1) { //TODO use libuv loop
-        gettimeofday(&t1, NULL);
-        t2 = t1;
-        tmpSnake = snakes;
-        while (tmpSnake) {
-            printf("Snake: %s\n", tmpSnake->name);
-            slither(tmpSnake);
-            tmpSnake = tmpSnake->next;
-        }
-        while (get_microsecond_diff(&t1, &t2) <= TICK_RATE) {
-            uv_run(loop, UV_RUN_NOWAIT);
-            gettimeofday(&t2, NULL);
-        }
-    }
+
+    uv_timer_t timer_req;
+    uv_timer_init(loop, &timer_req);
+    uv_timer_start(&timer_req, game_loop, 0, 33);
+
+    uv_run(loop, UV_RUN_DEFAULT);
 
     uv_loop_close(loop);
     return 0;

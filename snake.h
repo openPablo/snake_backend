@@ -15,6 +15,7 @@ struct Snake {
     coords dir;
     float speed;
     struct segment *head;
+    struct segment *tail;
     struct Snake *next;
 };
 #endif //MULTIPLAYER_SNAKE_H
