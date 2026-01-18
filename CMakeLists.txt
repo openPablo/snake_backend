@@ -10,5 +10,6 @@ FetchContent_Declare(
         GIT_TAG        v1.51.0
 )
 FetchContent_MakeAvailable(libuv)
-add_executable(multiplayer "main.c")
+add_executable(multiplayer "main.c"
+        snake.h)
 target_link_libraries(multiplayer PRIVATE uv ${CMAKE_DL_LIBS})
