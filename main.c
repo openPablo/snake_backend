@@ -62,15 +62,18 @@ int spawn_snake(struct Snake **snakes, char name[16]) {
         }
         tmpSnake = tmpSnake->next;
     }
-    struct segment *segment = malloc(sizeof *segment);
+    struct segment *first = malloc(sizeof (struct segment));
+    struct segment *second = malloc(sizeof (struct segment));
     struct Snake *snake = malloc(sizeof(struct Snake));
 
-    segment->pos = get_random_start();
-    segment->next = NULL;
+    first->pos = get_random_start();
+    first->next = second;
+    second->pos.x = first->pos.x * snake->speed;
+    second->pos.y = first->pos.y * snake->speed;
 
     snake->length = 10;
     snake->dir = (coords){0.5f, 0.5f};
-    snake->head = segment;
+    snake->head = first;
     snake->next = NULL;
     snake->speed = 0.1f;
 
@@ -90,9 +93,6 @@ int spawn_snake(struct Snake **snakes, char name[16]) {
     return 0;
 }
 
-void slither(struct Snake *snake) {
-
-}
 int kill_snake(struct Snake **snakes, char name[16]) {
     struct Snake *tmpSnake = *snakes;
     struct Snake *prev = NULL;
@@ -116,6 +116,31 @@ int kill_snake(struct Snake **snakes, char name[16]) {
     free(tmpSnake);
     return 0;
 }
+int ate_food() {
+    return -1;
+}
+void slither(struct Snake *snake) {
+    struct segment* newSegment = malloc(sizeof(struct segment));
+
+    newSegment->pos.x = snake->head->pos.x + snake->dir.x * snake->speed;
+    newSegment->pos.y = snake->head->pos.y + snake->dir.y * snake->speed;
+    newSegment->next = snake->head;
+
+    snake->head = newSegment;
+    if (ate_food() == 0) {
+        snake->length += 1;
+    }
+    else{
+        struct segment *tmp = snake->head;
+        while (tmp) {
+            if (tmp->next->next == NULL) {
+                tmp->next = NULL;
+            }
+            tmp = tmp->next;
+        }
+    }
+}
+
 suseconds_t get_microsecond_diff(const struct timeval* t1, const struct timeval* t2) {
     return (t2->tv_sec - t1->tv_sec) * 1000000 + (t2->tv_usec - t1->tv_usec);
 }
@@ -125,17 +150,19 @@ int main() {
     spawn_snake(&snakes, "Pablito");
     spawn_snake(&snakes, "Ornellita");
     kill_snake(&snakes, "Pablito");
-    kill_snake(&snakes, "Pablito");
+    spawn_snake(&snakes, "Pablito");
+
 
     create_uv_loop(PORT);
     struct timeval t1, t2;
     struct Snake* tmpSnake;
-    while (1) {
+    while (1) { //TODO use libuv loop
         gettimeofday(&t1, NULL);
         t2 = t1;
         tmpSnake = snakes;
         while (tmpSnake) {
             printf("Snake: %s\n", tmpSnake->name);
+            slither(tmpSnake);
             tmpSnake = tmpSnake->next;
         }
         while (get_microsecond_diff(&t1, &t2) <= TICK_RATE) {
