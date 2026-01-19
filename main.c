@@ -6,10 +6,10 @@
 #include <math.h>
 
 const int PORT =  8080;
+const int FOOD_RESPAWN_RATE = 2;
 
 uv_loop_t *loop;
-uv_udp_t send_socket;
-uv_udp_t recv_socket;
+uv_tcp_t tcp_server;
 
 struct snake *SNAKES = NULL;
 struct food *FOODS = NULL;
@@ -64,7 +64,7 @@ int spawn_snake(struct snake **snakes, char name[16]) { // NOT thread safe when 
     snake->dir = (coords){0.5f, 0.5f};
     snake->head = head;
     snake->next = *snakes;
-    snake->speed = 0.1f;
+    snake->speed = 0.01f;
     snake->digestingFood = 0;
 
     strncpy(snake->name, name, sizeof(snake->name) - 1);
@@ -129,45 +129,58 @@ int kill_snake(struct snake **snakes, char name[16]) {
     return 0;
 }
 
-
-void on_read(uv_udp_t *req, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
-    if (nread < 0) {
-        fprintf(stderr, "Read error %s\n", uv_err_name(nread));
-        uv_close((uv_handle_t*) req, NULL);
-        free(buf->base);
-        return;
-    }
-    char sender[17] = { 0 };
-    uv_ip4_name((const struct sockaddr_in*) addr, sender, 16);
-    fprintf(stderr, "Recv from %s\n", sender);
-    unsigned int *as_integer = (unsigned int*)buf->base;
-    unsigned int ipbin = ntohl(as_integer[4]);
-    unsigned char ip[4] = {0};
-    int i;
-    for (i = 0; i < 4; i++)
-        ip[i] = (ipbin >> i*8) & 0xff;
-    fprintf(stderr, "Offered IP %d.%d.%d.%d\n", ip[3], ip[2], ip[1], ip[0]);
-    free(buf->base);
-    uv_udp_recv_stop(req);
+void on_close(uv_handle_t* handle) {
+    free(handle);
 }
-
 void alloc_buffer(uv_handle_t *handle, size_t suggested_size, uv_buf_t *buf) {
     buf->base = malloc(suggested_size);
     buf->len = suggested_size;
 }
-void create_uv_loop(int port) {
-    loop = uv_default_loop();
-    uv_udp_init(loop, &recv_socket);
+void on_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
+    if (nread > 0) {
+        // Handle your logic here (e.g., parsing snake commands)
+        // Note: TCP is a stream; you may get partial or multiple messages at once.
+        printf("Read %ld bytes\n", nread);
+    }
 
-    struct sockaddr_in recv_addr;
-    uv_ip4_addr("0.0.0.0", port, &recv_addr);
-    uv_udp_bind(&recv_socket, (const struct sockaddr *)&recv_addr, UV_UDP_REUSEADDR);
-    uv_udp_recv_start(&recv_socket, alloc_buffer, on_read);
+    if (nread < 0) {
+        if (nread != UV_EOF)
+            fprintf(stderr, "Read error %s\n", uv_err_name(nread));
+        uv_close((uv_handle_t*) client, on_close);
+    }
 
-    uv_udp_init(loop, &send_socket);
-
+    free(buf->base);
 }
 
+void on_new_connection(uv_stream_t *server, int status) {
+    if (status < 0) {
+        fprintf(stderr, "New connection error %s\n", uv_err_name(status));
+        return;
+    }
+
+    uv_tcp_t *client = malloc(sizeof(uv_tcp_t));
+    uv_tcp_init(loop, client);
+
+    if (uv_accept(server, (uv_stream_t*) client) == 0) {
+        uv_read_start((uv_stream_t*) client, alloc_buffer, on_read);
+    } else {
+        uv_close((uv_handle_t*) client, on_close);
+    }
+}
+void create_uv_loop(int port) {
+    loop = uv_default_loop();
+    uv_tcp_init(loop, &tcp_server);
+
+    struct sockaddr_in addr;
+    uv_ip4_addr("0.0.0.0", port, &addr);
+
+    uv_tcp_bind(&tcp_server, (const struct sockaddr*)&addr, 0);
+
+    int r = uv_listen((uv_stream_t*) &tcp_server, 400, on_new_connection);
+    if (r) {
+        fprintf(stderr, "Listen error %s\n", uv_err_name(r));
+    }
+}
 void game_loop() {
     struct snake* tmpSnake;
     tmpSnake = SNAKES;
@@ -175,7 +188,11 @@ void game_loop() {
         slither(tmpSnake,&FOODS);
         tmpSnake = tmpSnake->next;
     }
-    
+    if (NUM_FOOD <= 1000) {
+        for (int i = 0; i < FOOD_RESPAWN_RATE; i++) {
+            spawn_food(&FOODS, &NUM_FOOD);
+        }
+    }
 }
 int main() {
     char snakeName[20];
