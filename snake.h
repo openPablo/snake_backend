@@ -9,13 +9,27 @@ struct segment {
     coords pos;
     struct segment *next;
 };
-struct Snake {
+struct snake {
     char name[16];
     int length;
+    int digestingFood;
     coords dir;
     float speed;
     struct segment *head;
     struct segment *tail;
-    struct Snake *next;
+    struct snake *next;
 };
+
+struct food {
+    coords pos;
+    struct food *next;
+};
+
+coords get_random_start();
+int ate_food();
+int spawn_snake();
+void slither();
+void spawn_food();
+int kill_snake();
+
 #endif //MULTIPLAYER_SNAKE_H
