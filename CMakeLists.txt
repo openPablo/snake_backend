@@ -11,5 +11,6 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(libuv)
 add_executable(multiplayer "main.c"
-        snake.h)
+        snake.h
+        uthash.h)
 target_link_libraries(multiplayer PRIVATE uv ${CMAKE_DL_LIBS})

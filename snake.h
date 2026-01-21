@@ -17,7 +17,7 @@ struct snake {
     float speed;
     struct segment *head;
     struct segment *tail;
-    struct snake *next;
+    UT_hash_handle hh;
 };
 
 struct food {
