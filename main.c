@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
+#include "uthash.h"
 #include "snake.h"
 #include <string.h>
 #include <math.h>
 
+const int MAX_PLAYERS = 2000;
 const int PORT =  8080;
 const int FOOD_RESPAWN_RATE = 2;
 
@@ -43,14 +45,7 @@ void detect_collision_food(struct snake *snake, struct food **foods) {
         tmpFood = tmpFood->next;
     }
 }
-int spawn_snake(struct snake **snakes, char name[16]) { // NOT thread safe when inserting a new snake, inserts at start of list
-    struct snake *tmpSnake = *snakes;
-    while (tmpSnake) {
-        if (strcmp(tmpSnake->name, name) == 0) {
-            return -1;
-        }
-        tmpSnake = tmpSnake->next;
-    }
+int spawn_snake(struct snake *snakes, char name[16]) { // NOT thread safe when inserting a new snake, inserts at start of list
     struct segment *head = malloc(sizeof (struct segment));
     struct segment *tail = malloc(sizeof (struct segment));
     struct snake *snake = malloc(sizeof(struct snake));
@@ -63,14 +58,12 @@ int spawn_snake(struct snake **snakes, char name[16]) { // NOT thread safe when 
     snake->length = 10;
     snake->dir = (coords){0.5f, 0.5f};
     snake->head = head;
-    snake->next = *snakes;
     snake->speed = 0.01f;
     snake->digestingFood = 0;
-
     strncpy(snake->name, name, sizeof(snake->name) - 1);
     snake->name[sizeof(snake->name) - 1] = '\0';
 
-    *snakes = snake;
+    HASH_ADD_STR(snakes, name, snake);
     return 0;
 }
 void slither(struct snake *snake, struct food **foods) {
@@ -105,27 +98,21 @@ void spawn_food(struct food **foods, int *num_food) { // Update food list is NOT
     *foods = food;
     *num_food += 1;
 }
-int kill_snake(struct snake **snakes, char name[16]) {
-    struct snake *tmpSnake = *snakes;
-    struct snake *prev = NULL;
-    while (tmpSnake != NULL && strcmp(tmpSnake->name, name) != 0) {
-        prev = tmpSnake;
-        tmpSnake = tmpSnake->next;
-    }
-    if (tmpSnake == NULL)  return -1;
-
-    if (prev) {
-        prev->next = tmpSnake->next;
-    }else {
-        *snakes = tmpSnake->next;
-    }
+struct snake *find_snake(struct snake *snakes, char name[]) {
+    struct snake *s;
+    HASH_FIND_STR(snakes, name, s);
+    return s;
+}
+int kill_snake(struct snake *snakes, char name[16]) {
+    struct snake *snake = find_snake(snakes, name);
     struct segment* tmp;
-    while (tmpSnake->head) {
-        tmp = tmpSnake->head;
-        tmpSnake->head = tmpSnake->head->next;
+    while (snake->head) {
+        tmp = snake->head;
+        snake->head = snake->head->next;
         free(tmp);
     }
-    free(tmpSnake);
+    HASH_DEL(snakes, snake);
+    free(snake);
     return 0;
 }
 
@@ -148,7 +135,6 @@ void on_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
             fprintf(stderr, "Read error %s\n", uv_err_name(nread));
         uv_close((uv_handle_t*) client, on_close);
     }
-
     free(buf->base);
 }
 
@@ -167,7 +153,7 @@ void on_new_connection(uv_stream_t *server, int status) {
         uv_close((uv_handle_t*) client, on_close);
     }
 }
-void create_uv_loop(int port) {
+void create_uv_loop(int port) { //TCP for now, study possibility of webrtc later
     loop = uv_default_loop();
     uv_tcp_init(loop, &tcp_server);
 
@@ -182,11 +168,9 @@ void create_uv_loop(int port) {
     }
 }
 void game_loop() {
-    struct snake* tmpSnake;
-    tmpSnake = SNAKES;
-    while (tmpSnake) {
-        slither(tmpSnake,&FOODS);
-        tmpSnake = tmpSnake->next;
+
+    for (struct snake *snake = SNAKES; snake != NULL; snake = snake->hh.next) {
+        slither(snake, &FOODS);
     }
     if (NUM_FOOD <= 1000) {
         for (int i = 0; i < FOOD_RESPAWN_RATE; i++) {
@@ -198,7 +182,7 @@ int main() {
     char snakeName[20];
     for (int i = 0; i < 2000; i++) {
         snprintf(snakeName, 16, "snake%d", i);
-        spawn_snake(&SNAKES, snakeName);
+        spawn_snake(SNAKES, snakeName);
         spawn_food(&FOODS, &NUM_FOOD);
     }
     create_uv_loop(PORT);
