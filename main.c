@@ -45,50 +45,46 @@ void detect_collision_food(struct snake *snake, struct food **foods) {
         tmpFood = tmpFood->next;
     }
 }
-int spawn_snake(struct snake *snakes, char name[16]) { // NOT thread safe when inserting a new snake, inserts at start of list
-    struct segment *head = malloc(sizeof (struct segment));
+void add_snake_segment(struct segment *head, struct snake *snake) {
     struct segment *tail = malloc(sizeof (struct segment));
-    struct snake *snake = malloc(sizeof(struct snake));
-
-    head->pos = get_random_start();
-    head->next = tail;
     tail->pos.x = head->pos.x - snake->dir.x * snake->speed;
     tail->pos.y = head->pos.y - snake->dir.y * snake->speed;
+    tail->prev = snake->tail;
+    snake->tail = tail;
+}
+int spawn_snake(struct snake **snakes, char name[16]) { // NOT thread safe when inserting a new snake, inserts at start of list
+    struct snake *snake = malloc(sizeof(struct snake));
+    struct segment *head = malloc(sizeof (struct segment));
 
-    snake->length = 10;
+    snake->length = 4;
     snake->dir = (coords){0.5f, 0.5f};
-    snake->head = head;
     snake->speed = 0.01f;
     snake->digestingFood = 0;
     strncpy(snake->name, name, sizeof(snake->name) - 1);
     snake->name[sizeof(snake->name) - 1] = '\0';
+    snake->head = head;
+    snake->tail = head;
 
-    HASH_ADD_STR(snakes, name, snake);
+    head->pos = get_random_start();
+    for (int i = 0; i < snake->length; i++) {
+        add_snake_segment(head, snake);
+    }
+
+    HASH_ADD_STR(*snakes, name, snake);
     return 0;
 }
 void slither(struct snake *snake, struct food **foods) {
     printf("Num of food: %d\n", NUM_FOOD);
-    struct segment* newSegment = malloc(sizeof(struct segment));
-
-    newSegment->pos.x = snake->head->pos.x + snake->dir.x * snake->speed;
-    newSegment->pos.y = snake->head->pos.y + snake->dir.y * snake->speed;
-    newSegment->next = snake->head;
-
-    snake->head = newSegment;
+    add_snake_segment(snake->head, snake);
     detect_collision_food(snake, foods);
     if (snake->digestingFood > 0) {
         snake->digestingFood -= 1;
         snake->length += 1;
     }
     else{
-        struct segment *tmp = snake->head;
-        while (tmp) {
-            if (tmp->next->next == NULL) {
-                free(tmp->next);
-                tmp->next = NULL;
-            }
-            tmp = tmp->next;
-        }
+        struct segment *tmp = snake->tail->prev;
+        free(snake->tail);
+        snake->tail = tmp;
     }
 }
 void spawn_food(struct food **foods, int *num_food) { // Update food list is NOT thread safe, implement safety when adding threads
@@ -103,15 +99,15 @@ struct snake *find_snake(struct snake *snakes, char name[]) {
     HASH_FIND_STR(snakes, name, s);
     return s;
 }
-int kill_snake(struct snake *snakes, char name[16]) {
-    struct snake *snake = find_snake(snakes, name);
+int kill_snake(struct snake **snakes, char name[16]) {
+    struct snake *snake = find_snake(*snakes, name);
     struct segment* tmp;
     while (snake->head) {
         tmp = snake->head;
         snake->head = snake->head->next;
         free(tmp);
     }
-    HASH_DEL(snakes, snake);
+    HASH_DEL(*snakes, snake);
     free(snake);
     return 0;
 }
@@ -182,7 +178,7 @@ int main() {
     char snakeName[20];
     for (int i = 0; i < 2000; i++) {
         snprintf(snakeName, 16, "snake%d", i);
-        spawn_snake(SNAKES, snakeName);
+        spawn_snake(&SNAKES, snakeName);
         spawn_food(&FOODS, &NUM_FOOD);
     }
     create_uv_loop(PORT);

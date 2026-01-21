@@ -7,6 +7,7 @@ typedef struct {
 } coords;
 struct segment {
     coords pos;
+    struct segment *prev;
     struct segment *next;
 };
 struct snake {
